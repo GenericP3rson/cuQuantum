@@ -16,6 +16,11 @@ try:
     from . import circuit_parser_utils_qiskit
 except ImportError:
     qiskit = circuit_parser_utils_qiskit = None
+try:
+    import torchquantum as tq
+    from . import circuit_parser_utils_torchquantum
+except ImportError:
+    tq = circuit_parser_utils_torchquantum = None
 
 from .tensor_wrapper import _get_backend_asarray_func
 from ..._utils import WHITESPACE_UNICODE
@@ -26,6 +31,7 @@ WHITESPACE_SYMBOLS_ID = None
 
 CIRQ_MIN_VERSION = '0.6.0'
 QISKIT_MIN_VERSION = '0.24.0'  # qiskit metapackage version
+TQ_MIN_VERSION = '0.1.8' # just doing the current version for now
 
 EMPTY_DICT = types.MappingProxyType({})
 
@@ -84,6 +90,10 @@ def infer_parser(circuit):
         cirq_version  = cirq.__version__
         check_version('cirq', cirq_version, CIRQ_MIN_VERSION)
         return circuit_parser_utils_cirq
+    elif tq and isinstance(circuit, tq.QuantumDevice):
+        tq_version = tq.__version__
+        check_version('tq', tq_version, TQ_MIN_VERSION)
+        return circuit_parser_utils_torchquantum
     else:
         base = circuit.__module__.split('.')[0]
         raise NotImplementedError(f'circuit from {base} not supported')
