@@ -140,21 +140,20 @@ def get_lightcone_circuit(circuit, coned_qubits):
     Returns:
         A :class:`qiskit.QuantumCircuit` object that potentially contains less number of gates
     """
-    circuit = convert(circuit)
     coned_qubits = set(coned_qubits)
-    gates, global_phase = get_decomposed_gates(circuit)
-    newqc = QuantumCircuit(circuit.qubits)
-    ix = len(gates)
+    all_operations = list(circuit.op_history)
+    n_qubits = circuit.n_wires
+    ix = len(all_operations)
     tail_operations = []
-    while len(coned_qubits) != circuit.num_qubits and ix>0:
+    while len(coned_qubits) != n_qubits and ix>0:
         ix -= 1
-        operation, gate_qubits = gates[ix]
-        qubit_set = set(gate_qubits)
+        operation = all_operations[ix]
+        qubit_set = set(operation["wires"])
         if qubit_set & coned_qubits:
-            tail_operations.append([operation, gate_qubits])
+            tail_operations.append(operation)
             coned_qubits |= qubit_set
-    for operation, gate_qubits in gates[:ix] + tail_operations[::-1]:
-        newqc.append(operation, gate_qubits)
-    newqc.global_phase = global_phase
-    newqc = revert_convert(newqc)
-    return newqc
+    ops = all_operations[:ix]+tail_operations[::-1]
+    qmod = tq.QuantumModule.from_op_history(ops)
+    qdev = tq.QuantumDevice(n_wires=n_qubits, record_op=True)
+    qmod(qdev)
+    return qdev
