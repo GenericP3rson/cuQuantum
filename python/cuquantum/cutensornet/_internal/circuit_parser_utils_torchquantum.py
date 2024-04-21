@@ -4,10 +4,13 @@
 
 import cupy as cp
 import numpy as np
+import torch
 from qiskit import QuantumCircuit
 from qiskit.circuit import Barrier, ControlledGate, Delay, Gate, Measure
 import torchquantum as tq
 from torchquantum.plugin import op_history2qiskit, qiskit2tq_op_history
+from torchquantum.functional import mat_dict
+from torchquantum.util import switch_little_big_endian_matrix
 try:
     # qiskit 1.0
     from qiskit.circuit.library import UnitaryGate
@@ -31,13 +34,10 @@ def remove_measurements(circuit):
     """
     Return a circuit with final measurement operations removed.
     """
-    circuit = convert(circuit)
-    circuit = circuit.copy()
-    circuit.remove_final_measurements()
-    for operation, _, _ in circuit:
-        if isinstance(operation, Measure):
-            raise ValueError('mid-circuit measurement not supported in tensor network simulation')
-    circuit = revert_convert(circuit)
+
+    # NOTE: if I'm correct, measurments aren't part of the qdev, so this is not needed
+    # NOTE: *may* want to create a copy?
+
     return circuit
 
 def get_inverse_circuit(circuit):
@@ -109,24 +109,25 @@ def unfold_circuit(circuit, dtype='complex128', backend=cp):
     Returns:
         All qubits and gate operations from the input circuit
     """
-    print(type(circuit))
-    circuit = convert(circuit)
     asarray = _get_backend_asarray_func(backend)
-    qubits = circuit.qubits
-    
-    def gate_process_func(operation, gate_qubits):
-        tensor = operation.to_matrix().reshape((2,2)*len(gate_qubits))
+    qubits = range(circuit.n_wires)
+    gates = []
+    old_gates = circuit.op_history
+    for gate in old_gates:
+        gate_qubits = gate["wires"]
+        if type(gate_qubits) == int:
+            gate_qubits = [gate_qubits]
+        matrix = mat_dict[gate["name"]]
+        if callable(matrix):
+            matrix = matrix(torch.tensor([gate["params"]]))
+        tensor = matrix.reshape((2,) * 2 * len(gate_qubits))
         tensor = asarray(tensor, dtype=dtype)
-        # in qiskit notation, qubits are labelled in the inverse order
-        return tensor, gate_qubits[::-1]
-    
-    gates, global_phase = get_decomposed_gates(circuit, gate_process_func=gate_process_func, global_phase=0)
-    if global_phase != 0:
-        phase = np.exp(1j*global_phase)
-        phase_gate = asarray([[phase, 0], [0, phase]], dtype=dtype)
-        gates = [(phase_gate, qubits[:1]), ] + gates
-
+        gates.append((tensor, gate_qubits))
+     
     return qubits, gates
+
+
+
 
 def get_lightcone_circuit(circuit, coned_qubits):
     """
